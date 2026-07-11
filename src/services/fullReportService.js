@@ -115,7 +115,7 @@ function buildFullReport({ birth, chart }) {
     [
       "✨ Ваш полный персональный отчет готов",
       "",
-      "Я собрал вашу натальную карту по дате, времени и месту рождения.",
+      "Натальная карта построена по дате, времени и месту рождения.",
       "Ниже — астрологическая схема и подробная интерпретация ключевых сфер жизни.",
       "",
       `Дата: ${birth.date}`,
@@ -185,7 +185,7 @@ function buildFullReport({ birth, chart }) {
       `В любви вам важна энергия ${venus.signRu}: ${venus.info.gift}.`,
       `Отношения раскрываются через тему ${venus.house} дома: ${HOUSE_TEXT[venus.house]}.`,
       "",
-      "Гармоничный партнер для вас — тот, кто уважает ваш эмоциональный ритм и не обесценивает ваши ценности."
+      "Гармоничное партнерство для вас строится там, где есть уважение к вашему эмоциональному ритму и ценностям."
     ].join("\n"),
     [
       "💰 7. Деньги и карьера",
@@ -206,7 +206,7 @@ function buildFullReport({ birth, chart }) {
       `Ваш ум работает через качество ${mercury.signRu}: ${mercury.info.gift}.`,
       `Точки роста открываются через ${jupiter.signRu}: ${jupiter.info.gift}.`,
       "",
-      "Ваш скрытый талант — видеть связи между внутренним потенциалом и реальными задачами жизни. Чем яснее вы выбираете направление, тем сильнее раскрывается карта."
+      "Скрытый талант карты — видеть связи между внутренним потенциалом и реальными задачами жизни. Чем яснее выбран вектор, тем сильнее раскрывается потенциал."
     ].join("\n"),
     [
       "🪐 9. Главные жизненные уроки",
@@ -233,11 +233,14 @@ function buildFullReport({ birth, chart }) {
 function buildNatalChartSvg({ birth, chart }) {
   const planets = Object.entries(chart.planets || {});
   const aspectLines = (chart.aspects || []).slice(0, 18);
-  const size = 900;
-  const center = 450;
-  const outer = 360;
-  const inner = 215;
-  const planetRadius = 285;
+  const width = 1200;
+  const height = 1600;
+  const center = { x: 600, y: 660 };
+  const outer = 430;
+  const zodiacRadius = 385;
+  const houseRadius = 332;
+  const aspectRadius = 238;
+  const planetRadius = 302;
 
   const planetByLabel = new Map(
     planets.map(([key, value]) => [value.label, { key, ...value }])
@@ -245,19 +248,31 @@ function buildNatalChartSvg({ birth, chart }) {
 
   const houses = Array.from({ length: 12 }, (_, index) => {
     const angle = ((chart.ascendant?.longitude || 0) + index * 30 - 90) * Math.PI / 180;
-    return line(center, center, center + Math.cos(angle) * outer, center + Math.sin(angle) * outer);
+    return line(center.x, center.y, center.x + Math.cos(angle) * outer, center.y + Math.sin(angle) * outer, "house-line");
   }).join("\n");
 
   const signs = ZODIAC_SYMBOLS.map((symbol, index) => {
     const angle = (index * 30 + 15 - 90) * Math.PI / 180;
-    const point = polar(center, center, 325, angle);
+    const point = polar(center.x, center.y, zodiacRadius, angle);
     return `<text x="${point.x}" y="${point.y}" class="sign">${symbol}</text>`;
+  }).join("\n");
+
+  const houseNumbers = Array.from({ length: 12 }, (_, index) => {
+    const angle = ((chart.ascendant?.longitude || 0) + index * 30 + 15 - 90) * Math.PI / 180;
+    const point = polar(center.x, center.y, houseRadius, angle);
+    return `<text x="${point.x}" y="${point.y}" class="house-number">${index + 1}</text>`;
   }).join("\n");
 
   const planetNodes = planets.map(([key, value]) => {
     const angle = (value.longitude - 90) * Math.PI / 180;
-    const point = polar(center, center, planetRadius, angle);
-    return `<g><circle cx="${point.x}" cy="${point.y}" r="22" class="planet-dot"/><text x="${point.x}" y="${point.y + 8}" class="planet">${PLANET_SYMBOLS[key] || "•"}</text></g>`;
+    const point = polar(center.x, center.y, planetRadius, angle);
+    const labelPoint = polar(center.x, center.y, planetRadius + 38, angle);
+    const planetLabel = planet(chart, key);
+    return `<g>
+      <circle cx="${point.x}" cy="${point.y}" r="23" class="planet-dot"/>
+      <text x="${point.x}" y="${point.y + 8}" class="planet">${PLANET_SYMBOLS[key] || "•"}</text>
+      <text x="${labelPoint.x}" y="${labelPoint.y + 5}" class="planet-label">${escapeXml(planetLabel.signRu)} ${escapeXml(String(value.house))}</text>
+    </g>`;
   }).join("\n");
 
   const aspects = aspectLines.map((aspect) => {
@@ -268,45 +283,94 @@ function buildNatalChartSvg({ birth, chart }) {
       return "";
     }
 
-    const fromPoint = polar(center, center, inner, (from.longitude - 90) * Math.PI / 180);
-    const toPoint = polar(center, center, inner, (to.longitude - 90) * Math.PI / 180);
-    const className = aspect.type === "трин" || aspect.type === "секстиль" ? "aspect-soft" : "aspect-strong";
+    const fromPoint = polar(center.x, center.y, aspectRadius, (from.longitude - 90) * Math.PI / 180);
+    const toPoint = polar(center.x, center.y, aspectRadius, (to.longitude - 90) * Math.PI / 180);
+    const className = getAspectClass(aspect.type);
     return `<line x1="${fromPoint.x}" y1="${fromPoint.y}" x2="${toPoint.x}" y2="${toPoint.y}" class="${className}"/>`;
   }).join("\n");
 
+  const placementRows = planets.map(([key, value], index) => {
+    const item = planet(chart, key);
+    const y = 1166 + index * 48;
+    return `<g>
+      <text x="110" y="${y}" class="table-symbol">${PLANET_SYMBOLS[key] || "•"}</text>
+      <text x="155" y="${y}" class="table-text">${escapeXml(value.label)}</text>
+      <text x="390" y="${y}" class="table-text">${escapeXml(item.signRu)}</text>
+      <text x="590" y="${y}" class="table-text">${escapeXml(String(value.house))} дом</text>
+      <text x="750" y="${y}" class="table-muted">${escapeXml(String(value.longitude))}°</text>
+    </g>`;
+  }).join("\n");
+
+  const aspectRows = (chart.aspects || []).slice(0, 5).map((aspect, index) => {
+    const y = 1166 + index * 48;
+    return `<text x="805" y="${y}" class="table-muted">${escapeXml(aspect.from)} ${escapeXml(aspectLabel(aspect.type))} ${escapeXml(aspect.to)}</text>`;
+  }).join("\n") || `<text x="805" y="1166" class="table-muted">Мажорные аспекты не выделены</text>`;
+
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <defs>
-    <radialGradient id="bg" cx="50%" cy="45%" r="65%">
-      <stop offset="0%" stop-color="#2b1b62"/>
-      <stop offset="55%" stop-color="#120d2e"/>
+    <radialGradient id="bg" cx="50%" cy="36%" r="72%">
+      <stop offset="0%" stop-color="#2c1b65"/>
+      <stop offset="52%" stop-color="#100b2b"/>
       <stop offset="100%" stop-color="#050713"/>
     </radialGradient>
+    <linearGradient id="panel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#17113a" stop-opacity="0.96"/>
+      <stop offset="100%" stop-color="#070917" stop-opacity="0.96"/>
+    </linearGradient>
     <filter id="glow"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
   </defs>
-  <rect width="900" height="900" fill="url(#bg)"/>
-  <circle cx="130" cy="130" r="2" fill="#fff"/><circle cx="760" cy="180" r="2" fill="#fff"/><circle cx="705" cy="735" r="2" fill="#fff"/><circle cx="210" cy="710" r="1.6" fill="#fff"/>
-  <text x="450" y="70" class="title">Натальная карта</text>
-  <text x="450" y="105" class="subtitle">${escapeXml(birth.date)} • ${escapeXml(birth.time)} • ${escapeXml(shortPlace(birth.place))}</text>
-  <circle cx="450" cy="450" r="360" class="ring"/>
-  <circle cx="450" cy="450" r="300" class="ring thin"/>
-  <circle cx="450" cy="450" r="215" class="ring thin"/>
+  <rect width="1200" height="1600" fill="url(#bg)"/>
+  <circle cx="135" cy="155" r="2" fill="#fff"/><circle cx="1045" cy="190" r="2" fill="#fff"/><circle cx="980" cy="910" r="2" fill="#fff"/><circle cx="210" cy="965" r="1.6" fill="#fff"/>
+  <circle cx="1020" cy="420" r="75" fill="none" stroke="#725cff" stroke-width="1.2" opacity=".4"/>
+  <circle cx="185" cy="425" r="42" fill="none" stroke="#57d6ff" stroke-width="1.2" opacity=".35"/>
+
+  <text x="600" y="92" class="kicker">PERSONAL NATAL CHART REPORT</text>
+  <text x="600" y="152" class="title">Натальная карта</text>
+  <text x="600" y="198" class="subtitle">${escapeXml(birth.date)} • ${escapeXml(birth.time)} • ${escapeXml(shortPlace(birth.place))}</text>
+  <text x="600" y="230" class="subtitle small">Timezone: ${escapeXml(birth.timezone)} • Ascendant: ${escapeXml(signInfo(chart.ascendant.sign).ru)}</text>
+
+  <rect x="70" y="270" width="1060" height="780" rx="34" class="panel"/>
+  <circle cx="600" cy="660" r="430" class="ring"/>
+  <circle cx="600" cy="660" r="370" class="ring thin"/>
+  <circle cx="600" cy="660" r="303" class="ring thin"/>
+  <circle cx="600" cy="660" r="238" class="ring inner"/>
   ${houses}
   ${signs}
+  ${houseNumbers}
   ${aspects}
   ${planetNodes}
-  <text x="450" y="820" class="footer">Asc: ${escapeXml(signInfo(chart.ascendant.sign).ru)} • ${escapeXml(birth.timezone)}</text>
+
+  <rect x="70" y="1090" width="1060" height="410" rx="28" class="panel"/>
+  <text x="110" y="1132" class="section-title">Положения планет</text>
+  <text x="805" y="1132" class="section-title">Ключевые аспекты</text>
+  ${placementRows}
+  ${aspectRows}
+
+  <rect x="70" y="1525" width="1060" height="1" fill="#f7d783" opacity=".45"/>
+  <text x="600" y="1562" class="footer">Blue: harmonious aspects • Pink: tense aspects • Gold: conjunctions</text>
   <style>
-    .title{fill:#f7d783;font:700 38px Georgia,serif;text-anchor:middle;letter-spacing:1px}
-    .subtitle,.footer{fill:#d8c7ff;font:500 20px Arial,sans-serif;text-anchor:middle}
+    .kicker{fill:#57d6ff;font:700 20px Arial,sans-serif;text-anchor:middle;letter-spacing:4px;opacity:.88}
+    .title{fill:#f7d783;font:700 56px Georgia,serif;text-anchor:middle;letter-spacing:1px}
+    .subtitle,.footer{fill:#d8c7ff;font:500 24px Arial,sans-serif;text-anchor:middle}
+    .small{font-size:20px;opacity:.82}
+    .panel{fill:url(#panel);stroke:#f7d783;stroke-width:1.4;opacity:.95}
     .ring{fill:none;stroke:#f7d783;stroke-width:3;filter:url(#glow)}
-    .thin{stroke-width:1.4;opacity:.65}
-    line{stroke:#8f7cff;stroke-width:1.2;opacity:.55}
-    .sign{fill:#f7d783;font:34px Arial,sans-serif;text-anchor:middle;dominant-baseline:middle}
+    .thin{stroke-width:1.3;opacity:.65}
+    .inner{stroke-width:1.1;opacity:.45}
+    .house-line{stroke:#8f7cff;stroke-width:1.15;opacity:.5}
+    .sign{fill:#f7d783;font:38px Arial,sans-serif;text-anchor:middle;dominant-baseline:middle}
+    .house-number{fill:#d8c7ff;font:700 22px Arial,sans-serif;text-anchor:middle;dominant-baseline:middle;opacity:.82}
     .planet-dot{fill:#151032;stroke:#f7d783;stroke-width:2;filter:url(#glow)}
     .planet{fill:#fff6c7;font:31px Arial,sans-serif;text-anchor:middle}
-    .aspect-soft{stroke:#57d6ff;stroke-width:2;opacity:.62}
-    .aspect-strong{stroke:#ff5fb7;stroke-width:2;opacity:.58}
+    .planet-label{fill:#d8c7ff;font:700 13px Arial,sans-serif;text-anchor:middle;opacity:.92}
+    .aspect-soft{stroke:#57d6ff;stroke-width:2.2;opacity:.68}
+    .aspect-strong{stroke:#ff5fb7;stroke-width:2.2;opacity:.62}
+    .aspect-conjunction{stroke:#f7d783;stroke-width:2.5;opacity:.78}
+    .section-title{fill:#f7d783;font:700 25px Arial,sans-serif}
+    .table-symbol{fill:#f7d783;font:30px Arial,sans-serif;text-anchor:middle}
+    .table-text{fill:#fff6c7;font:500 22px Arial,sans-serif}
+    .table-muted{fill:#d8c7ff;font:500 18px Arial,sans-serif;opacity:.86}
   </style>
 </svg>`;
 }
@@ -350,6 +414,30 @@ function formatAspects(aspects) {
     .join("\n");
 }
 
+function getAspectClass(type) {
+  if (type === "соединение") {
+    return "aspect-conjunction";
+  }
+
+  if (type === "трин" || type === "секстиль") {
+    return "aspect-soft";
+  }
+
+  return "aspect-strong";
+}
+
+function aspectLabel(type) {
+  const labels = {
+    соединение: "☌",
+    секстиль: "✶",
+    квадрат: "□",
+    трин: "△",
+    оппозиция: "☍"
+  };
+
+  return labels[type] || type;
+}
+
 function polar(cx, cy, radius, angle) {
   return {
     x: Math.round((cx + Math.cos(angle) * radius) * 10) / 10,
@@ -357,8 +445,9 @@ function polar(cx, cy, radius, angle) {
   };
 }
 
-function line(x1, y1, x2, y2) {
-  return `<line x1="${Math.round(x1)}" y1="${Math.round(y1)}" x2="${Math.round(x2)}" y2="${Math.round(y2)}"/>`;
+function line(x1, y1, x2, y2, className = "") {
+  const classAttribute = className ? ` class="${className}"` : "";
+  return `<line x1="${Math.round(x1)}" y1="${Math.round(y1)}" x2="${Math.round(x2)}" y2="${Math.round(y2)}"${classAttribute}/>`;
 }
 
 function shortPlace(place) {
