@@ -89,10 +89,15 @@ function getRecentChartRequests(userId, limit = 5) {
     .slice(0, limit);
 }
 
+function getChartRequestById(id) {
+  return getDb().chartRequests.find((row) => row.id === Number(id)) || null;
+}
+
 module.exports = {
   getDb,
   initDb,
   upsertUser,
   saveChartRequest,
-  getRecentChartRequests
+  getRecentChartRequests,
+  getChartRequestById
 };

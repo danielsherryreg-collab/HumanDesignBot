@@ -28,6 +28,7 @@ DATABASE_PATH=./data/bot.json
 NOMINATIM_EMAIL=твоя_почта@example.com
 NOMINATIM_USER_AGENT=HumanDesignNatalBot/0.1
 EPHEMERIS_PATH=./ephe
+FULL_REPORT_STARS=150
 ```
 
 4. Запусти:

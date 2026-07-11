@@ -1,9 +1,10 @@
 const { Telegraf, Markup, session } = require("telegraf");
 const { config } = require("../config/config");
-const { upsertUser, saveChartRequest, getRecentChartRequests } = require("../db/database");
+const { upsertUser, saveChartRequest, getRecentChartRequests, getChartRequestById } = require("../db/database");
 const { geocodePlace, getTimezone } = require("../services/geoService");
 const { calculateNatalChart } = require("../services/chartService");
 const { buildInterpretation } = require("../services/interpretationService");
+const { buildFullReport, buildNatalChartSvg } = require("../services/fullReportService");
 const { parseDate, parseTime } = require("../utils/validators");
 
 const STEPS = {
@@ -35,13 +36,15 @@ function mainKeyboard() {
   return Markup.keyboard([["🔮 Рассчитать карту"], ["📜 История"]]).resize();
 }
 
-function detailedReportKeyboard() {
-  return Markup.inlineKeyboard([[Markup.button.callback("📖 Подробный отчет", "full_report")]]);
+function detailedReportKeyboard(requestId) {
+  const action = requestId ? `full_report:${requestId}` : "full_report";
+  return Markup.inlineKeyboard([[Markup.button.callback("📖 Подробный отчет", action)]]);
 }
 
-function paymentKeyboard() {
+function paymentKeyboard(requestId) {
+  const action = requestId ? `pay_full_report:${requestId}` : "pay_full_report";
   return Markup.inlineKeyboard([
-    [Markup.button.callback("💳 Оплатить 500р", "pay_full_report")],
+    [Markup.button.callback("⭐ Оплатить звездами (~300р)", action)],
     [Markup.button.callback("⬅️ Обратно в меню", "back_to_menu")]
   ]);
 }
@@ -64,17 +67,52 @@ function createBot() {
   bot.hears("🔮 Рассчитать карту", askDate);
   bot.command("new", askDate);
 
-  bot.action("full_report", async (ctx) => {
+  bot.action(/^full_report(?::(\d+))?$/, async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.reply(FULL_REPORT_TEXT, paymentKeyboard());
+    const requestId = ctx.match?.[1] || getLatestRequestId(ctx.from);
+    await ctx.reply(FULL_REPORT_TEXT, paymentKeyboard(requestId));
   });
 
-  bot.action("pay_full_report", async (ctx) => {
+  bot.action(/^pay_full_report(?::(\d+))?$/, async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.reply(
-      "Оплата пока не подключена. Следующий шаг — добавить платежную систему и ссылку на оплату полного отчета.",
-      paymentKeyboard()
-    );
+    const requestId = ctx.match?.[1] || getLatestRequestId(ctx.from);
+
+    if (!requestId) {
+      await ctx.reply("Сначала рассчитайте карту, чтобы я мог подготовить полный отчет.", mainKeyboard());
+      return;
+    }
+
+    await sendFullReportInvoice(ctx, requestId);
+  });
+
+  bot.on("pre_checkout_query", async (ctx) => {
+    const query = ctx.update.pre_checkout_query;
+    const expectedAmount = config.fullReportStars;
+    const request = getRequestFromPayload(query.invoice_payload);
+
+    if (!request || request.user_id !== upsertUser(query.from).id || query.currency !== "XTR" || query.total_amount !== expectedAmount) {
+      await ctx.answerPreCheckoutQuery(false, "Платеж не прошел проверку. Попробуйте еще раз.");
+      return;
+    }
+
+    await ctx.answerPreCheckoutQuery(true);
+  });
+
+  bot.on("successful_payment", async (ctx) => {
+    const payment = ctx.message.successful_payment;
+
+    if (payment.currency !== "XTR") {
+      return;
+    }
+
+    const request = getRequestFromPayload(payment.invoice_payload);
+
+    if (!request) {
+      await ctx.reply("✅ Оплата прошла успешно, но я не нашел расчет. Напишите /new и создайте карту заново.", mainKeyboard());
+      return;
+    }
+
+    await sendPaidFullReport(ctx, request);
   });
 
   bot.action("back_to_menu", async (ctx) => {
@@ -100,7 +138,7 @@ function createBot() {
         `Создано: ${formatDateTime(item.created_at)}`
       ].join("\n");
 
-      await ctx.reply(text, detailedReportKeyboard());
+      await ctx.reply(text, detailedReportKeyboard(item.id));
     }
   });
 
@@ -192,7 +230,7 @@ async function handlePlace(ctx) {
     const reportText = buildInterpretation({ birth, chart });
     const user = upsertUser(ctx.from);
 
-    saveChartRequest({
+    const savedRequest = saveChartRequest({
       userId: user.id,
       birth,
       chart,
@@ -201,7 +239,7 @@ async function handlePlace(ctx) {
 
     ctx.session = {};
 
-    await ctx.reply(reportText, detailedReportKeyboard());
+    await ctx.reply(reportText, detailedReportKeyboard(savedRequest.id));
   } catch (error) {
     if (error.message === "PLACE_NOT_FOUND") {
       await ctx.reply("Не нашел такое место. Попробуй написать город и страну латиницей или подробнее.");
@@ -218,6 +256,61 @@ function formatDateTime(value) {
     dateStyle: "short",
     timeStyle: "short"
   });
+}
+
+async function sendFullReportInvoice(ctx, requestId) {
+  await ctx.replyWithInvoice({
+    title: "Полный персональный отчет",
+    description: "Подробная интерпретация натальной карты по вашим дате, времени и месту рождения.",
+    payload: `full_report:${requestId}:${ctx.from.id}:${Date.now()}`,
+    provider_token: "",
+    currency: "XTR",
+    prices: [
+      {
+        label: "Полный отчет",
+        amount: config.fullReportStars
+      }
+    ]
+  });
+}
+
+async function sendPaidFullReport(ctx, request) {
+  const svg = buildNatalChartSvg({
+    birth: request.birth,
+    chart: request.chart
+  });
+  const reportParts = buildFullReport({
+    birth: request.birth,
+    chart: request.chart
+  });
+
+  await ctx.reply("✅ Оплата прошла успешно. Готовлю ваш полный персональный отчет...");
+  await ctx.replyWithDocument(
+    {
+      source: Buffer.from(svg, "utf8"),
+      filename: `natal-chart-${request.id}.svg`
+    },
+    {
+      caption: "🌌 Ваша натальная карта"
+    }
+  );
+
+  for (const part of reportParts) {
+    await ctx.reply(part);
+  }
+
+  await ctx.reply("Готово. Отчет можно перечитывать в этом чате — он останется в истории сообщений.", mainKeyboard());
+}
+
+function getRequestFromPayload(payload) {
+  const [, requestId] = String(payload || "").split(":");
+  return requestId ? getChartRequestById(requestId) : null;
+}
+
+function getLatestRequestId(from) {
+  const user = upsertUser(from);
+  const [latest] = getRecentChartRequests(user.id, 1);
+  return latest?.id || null;
 }
 
 module.exports = { createBot };
