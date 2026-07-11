@@ -32,6 +32,22 @@ const FULL_REPORT_TEXT = [
   "Нажмите кнопку ниже и получите полный отчет, который поможет взглянуть на себя с новой стороны."
 ].join("\n");
 
+const WELCOME_TEXT = [
+  "✨ Ваша натальная карта — это личная карта характера, талантов и жизненных сценариев.",
+  "",
+  "По дате, времени и месту рождения я покажу:",
+  "• где ваша сильная энергия",
+  "• как вы проявляетесь в отношениях",
+  "• какие сферы подходят для денег и карьеры",
+  "• что может мешать достигать целей",
+  "• какие точки роста заложены в вашей карте",
+  "",
+  "Сначала вы получите краткий разбор бесплатно.",
+  "После этого сможете открыть полный персональный отчёт со схемой натальной карты.",
+  "",
+  "🔮 Начнём?"
+].join("\n");
+
 const HELP_TEXT = [
   "❓ Помощь",
   "",
@@ -88,6 +104,10 @@ function paymentKeyboard(requestId) {
   ]);
 }
 
+async function sendWelcomeWindow(ctx) {
+  await ctx.reply(WELCOME_TEXT, mainKeyboard());
+}
+
 function createBot() {
   const bot = new Telegraf(config.botToken);
 
@@ -97,15 +117,24 @@ function createBot() {
     upsertUser(ctx.from);
     ctx.session = {};
 
-    await ctx.reply(
-      "Привет! Я помогу собрать данные рождения и подготовить натальную карту: Солнце, Луна, Асцендент, дома, аспекты и краткую интерпретацию.",
-      mainKeyboard()
-    );
+    await sendWelcomeWindow(ctx);
   });
 
-  bot.hears("🔮 Рассчитать карту", askDate);
-  bot.action("start_chart", askDate);
-  bot.command("new", askDate);
+  bot.hears("🔮 Рассчитать карту", async (ctx) => {
+    await sendWelcomeWindow(ctx);
+    await askDate(ctx);
+  });
+
+  bot.action("start_chart", async (ctx) => {
+    await ctx.answerCbQuery();
+    await sendWelcomeWindow(ctx);
+    await askDate(ctx);
+  });
+
+  bot.command("new", async (ctx) => {
+    await sendWelcomeWindow(ctx);
+    await askDate(ctx);
+  });
 
   bot.action(/^full_report(?::(\d+))?$/, async (ctx) => {
     await ctx.answerCbQuery();
@@ -161,6 +190,7 @@ function createBot() {
   });
 
   bot.hears("✨ Полный отчёт", async (ctx) => {
+    await sendWelcomeWindow(ctx);
     const requestId = getLatestRequestId(ctx.from);
 
     if (!requestId) {
@@ -178,6 +208,7 @@ function createBot() {
   });
 
   bot.hears("❓ Помощь", async (ctx) => {
+    await sendWelcomeWindow(ctx);
     await ctx.reply(HELP_TEXT, helpKeyboard());
   });
 
@@ -189,6 +220,7 @@ function createBot() {
   bot.hears("📜 История", showHistory);
 
   async function showHistory(ctx) {
+    await sendWelcomeWindow(ctx);
     const user = upsertUser(ctx.from);
     const history = getRecentChartRequests(user.id, 5);
 
