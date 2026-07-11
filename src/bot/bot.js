@@ -92,14 +92,14 @@ function fullReportIntroKeyboard(requestId) {
 
   return Markup.inlineKeyboard([
     [Markup.button.callback("📖 Посмотреть описание", `full_report:${requestId}`)],
-    [Markup.button.callback("⭐ Оплатить звездами (~300р)", `pay_full_report:${requestId}`)]
+    [Markup.button.callback("🌌 Получить полный отчет", `pay_full_report:${requestId}`)]
   ]);
 }
 
 function paymentKeyboard(requestId) {
   const action = requestId ? `pay_full_report:${requestId}` : "pay_full_report";
   return Markup.inlineKeyboard([
-    [Markup.button.callback("⭐ Оплатить звездами (~300р)", action)],
+    [Markup.button.callback("🌌 Получить полный отчет", action)],
     [Markup.button.callback("⬅️ Обратно в меню", "back_to_menu")]
   ]);
 }
@@ -148,7 +148,14 @@ function createBot() {
       return;
     }
 
-    await sendFullReportInvoice(ctx, requestId);
+    const request = getChartRequestById(requestId);
+
+    if (!request) {
+      await ctx.reply("Не нашел расчет. Создайте карту заново: /new", mainKeyboard());
+      return;
+    }
+
+    await sendPaidFullReport(ctx, request);
   });
 
   bot.on("pre_checkout_query", async (ctx) => {
@@ -198,7 +205,7 @@ function createBot() {
     }
 
     await ctx.reply(
-      "✨ Полный персональный отчет\n\nУ вас уже есть сохраненная карта. Вы можете посмотреть описание отчета или сразу перейти к оплате звездами.",
+      "✨ Полный персональный отчет\n\nУ вас уже есть сохраненная карта. Вы можете посмотреть описание отчета или сразу открыть тестовую выдачу полного отчета.",
       fullReportIntroKeyboard(requestId)
     );
   });
