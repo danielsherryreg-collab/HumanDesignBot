@@ -6,12 +6,21 @@ const { geocodePlace, getTimezone } = require("../services/geoService");
 const { calculateNatalChart } = require("../services/chartService");
 const { buildInterpretation } = require("../services/interpretationService");
 const { buildFullReport, buildNatalChartSvg } = require("../services/fullReportService");
+const { buildCompatibilityReport } = require("../services/compatibilityService");
+const { buildDailyForecast } = require("../services/dailyForecastService");
+const { buildNatalReportPdf } = require("../services/pdfReportService");
 const { parseDate, parseTime } = require("../utils/validators");
 
 const STEPS = {
   DATE: "date",
   TIME: "time",
-  PLACE: "place"
+  PLACE: "place",
+  COMPAT_A_DATE: "compat_a_date",
+  COMPAT_A_TIME: "compat_a_time",
+  COMPAT_A_PLACE: "compat_a_place",
+  COMPAT_B_DATE: "compat_b_date",
+  COMPAT_B_TIME: "compat_b_time",
+  COMPAT_B_PLACE: "compat_b_place"
 };
 
 const MAIN_MENU_IMAGE_PATH = path.resolve(__dirname, "..", "..", "assets", "main-menu.png");
@@ -69,13 +78,27 @@ const HELP_TEXT = [
   "",
   "Чем точнее время рождения, тем точнее Асцендент и дома.",
   "",
+  "Для совместимости нужны такие же данные двух людей.",
+  "",
+  "Прогноз дня можно смотреть каждый день — если карта уже рассчитана, бот добавит персональный акцент.",
+  "",
   "Оплата полного отчета проходит через Telegram Stars. После оплаты бот автоматически отправит астральную карту и подробный разбор."
+].join("\n");
+
+const COMPATIBILITY_INTRO_TEXT = [
+  "💞 Совместимость",
+  "",
+  "Я рассчитаю две натальные карты и сравню эмоциональную, романтическую и характерную совместимость.",
+  "",
+  "Сначала введите данные первого человека, затем второго."
 ].join("\n");
 
 function mainKeyboard() {
   return Markup.keyboard([
-    ["🔮 Рассчитать карту", "📜 История"],
-    ["✨ Полный отчёт", "❓ Помощь"]
+    ["🔮 Рассчитать карту", "💞 Совместимость"],
+    ["🌙 Прогноз дня", "📜 История"],
+    ["✨ Полный отчёт", "📄 PDF отчёт"],
+    ["❓ Помощь"]
   ]).resize();
 }
 
@@ -102,14 +125,17 @@ function fullReportIntroKeyboard(requestId) {
 
   return Markup.inlineKeyboard([
     [Markup.button.callback("📖 Посмотреть описание", `full_report:${requestId}`)],
-    [Markup.button.callback("🌌 Получить полный отчет", `pay_full_report:${requestId}`)]
+    [Markup.button.callback("🌌 Получить полный отчет", `pay_full_report:${requestId}`)],
+    [Markup.button.callback("📄 Получить PDF", `pdf_report:${requestId}`)]
   ]);
 }
 
 function paymentKeyboard(requestId) {
   const action = requestId ? `pay_full_report:${requestId}` : "pay_full_report";
+  const pdfAction = requestId ? `pdf_report:${requestId}` : "pdf_report";
   return Markup.inlineKeyboard([
     [Markup.button.callback("🌌 Получить полный отчет", action)],
+    [Markup.button.callback("📄 Получить PDF", pdfAction)],
     [Markup.button.callback("⬅️ Обратно в меню", "back_to_menu")]
   ]);
 }
@@ -150,6 +176,18 @@ function createBot() {
     await askDate(ctx);
   });
 
+  bot.hears("💞 Совместимость", async (ctx) => {
+    await askCompatibilityStart(ctx);
+  });
+
+  bot.hears("🌙 Прогноз дня", async (ctx) => {
+    await sendDailyForecast(ctx);
+  });
+
+  bot.hears("📄 PDF отчёт", async (ctx) => {
+    await sendLatestPdfReport(ctx);
+  });
+
   bot.action("start_chart", async (ctx) => {
     await ctx.answerCbQuery();
     await askDate(ctx);
@@ -182,6 +220,25 @@ function createBot() {
     }
 
     await sendPaidFullReport(ctx, request);
+  });
+
+  bot.action(/^pdf_report(?::(\d+))?$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const requestId = ctx.match?.[1] || getLatestRequestId(ctx.from);
+
+    if (!requestId) {
+      await ctx.reply("Сначала рассчитайте карту, чтобы я мог подготовить PDF-отчет.", mainKeyboard());
+      return;
+    }
+
+    const request = getChartRequestById(requestId);
+
+    if (!request) {
+      await ctx.reply("Не нашел расчет. Создайте карту заново: /new", mainKeyboard());
+      return;
+    }
+
+    await sendPdfReport(ctx, request);
   });
 
   bot.on("pre_checkout_query", async (ctx) => {
@@ -284,6 +341,18 @@ function createBot() {
       return handlePlace(ctx);
     }
 
+    if (step === STEPS.COMPAT_A_DATE || step === STEPS.COMPAT_B_DATE) {
+      return handleCompatibilityDate(ctx);
+    }
+
+    if (step === STEPS.COMPAT_A_TIME || step === STEPS.COMPAT_B_TIME) {
+      return handleCompatibilityTime(ctx);
+    }
+
+    if (step === STEPS.COMPAT_A_PLACE || step === STEPS.COMPAT_B_PLACE) {
+      return handleCompatibilityPlace(ctx);
+    }
+
     return sendMainMenu(ctx);
   });
 
@@ -376,6 +445,167 @@ async function handlePlace(ctx) {
     console.error(error);
     await ctx.reply("Не смог завершить расчет. Проверь место рождения или попробуй позже.");
   }
+}
+
+async function askCompatibilityStart(ctx) {
+  upsertUser(ctx.from);
+  ctx.session = {
+    step: STEPS.COMPAT_A_DATE,
+    compatibility: {
+      personA: {},
+      personB: {}
+    }
+  };
+
+  await ctx.reply(COMPATIBILITY_INTRO_TEXT);
+  await ctx.reply("Введите дату рождения первого человека в формате ГГГГ-ММ-ДД. Например: 1998-04-12");
+}
+
+async function handleCompatibilityDate(ctx) {
+  const date = parseDate(ctx.message.text);
+
+  if (!date) {
+    await ctx.reply("Не вижу дату. Введите в формате ГГГГ-ММ-ДД, например: 1998-04-12");
+    return;
+  }
+
+  const person = getCompatibilityPerson(ctx);
+  person.date = date;
+  ctx.session.step = ctx.session.step === STEPS.COMPAT_A_DATE ? STEPS.COMPAT_A_TIME : STEPS.COMPAT_B_TIME;
+
+  await ctx.reply(`Теперь введите точное время рождения ${getCompatibilityPersonLabel(ctx)} в формате ЧЧ:ММ. Например: 14:35`);
+}
+
+async function handleCompatibilityTime(ctx) {
+  const time = parseTime(ctx.message.text);
+
+  if (!time) {
+    await ctx.reply("Не вижу время. Введите в формате ЧЧ:ММ, например: 14:35");
+    return;
+  }
+
+  const person = getCompatibilityPerson(ctx);
+  person.time = time;
+  ctx.session.step = ctx.session.step === STEPS.COMPAT_A_TIME ? STEPS.COMPAT_A_PLACE : STEPS.COMPAT_B_PLACE;
+
+  await ctx.reply(`Теперь введите место рождения ${getCompatibilityPersonLabel(ctx)}: город и страна. Например: Tbilisi, Georgia`);
+}
+
+async function handleCompatibilityPlace(ctx) {
+  const placeInput = ctx.message.text.trim();
+
+  if (placeInput.length < 2) {
+    await ctx.reply("Введите город и страну, например: Tbilisi, Georgia");
+    return;
+  }
+
+  await ctx.reply("Секунду, ищу координаты и часовой пояс...");
+
+  try {
+    const geo = await geocodePlace(placeInput);
+    const timezone = getTimezone(geo.lat, geo.lon);
+    const person = getCompatibilityPerson(ctx);
+
+    Object.assign(person, {
+      place: geo.place,
+      lat: geo.lat,
+      lon: geo.lon,
+      timezone
+    });
+
+    if (ctx.session.step === STEPS.COMPAT_A_PLACE) {
+      ctx.session.step = STEPS.COMPAT_B_DATE;
+      await ctx.reply("Теперь введите дату рождения второго человека в формате ГГГГ-ММ-ДД. Например: 1999-08-21");
+      return;
+    }
+
+    await finishCompatibility(ctx);
+  } catch (error) {
+    if (error.message === "PLACE_NOT_FOUND") {
+      await ctx.reply("Не нашел такое место. Попробуйте написать город и страну латиницей или подробнее.");
+      return;
+    }
+
+    console.error(error);
+    await ctx.reply("Не смог обработать место рождения. Попробуйте позже или введите место подробнее.");
+  }
+}
+
+async function finishCompatibility(ctx) {
+  await ctx.reply("Считаю совместимость по двум натальным картам...");
+
+  const birthA = ctx.session.compatibility.personA;
+  const birthB = ctx.session.compatibility.personB;
+  const chartA = await calculateNatalChart(birthA);
+  const chartB = await calculateNatalChart(birthB);
+  const report = buildCompatibilityReport({
+    birthA,
+    birthB,
+    chartA,
+    chartB
+  });
+
+  ctx.session = {};
+  await ctx.reply(report, mainKeyboard());
+}
+
+async function sendDailyForecast(ctx) {
+  const user = upsertUser(ctx.from);
+  const [latestRequest] = getRecentChartRequests(user.id, 1);
+  const forecast = buildDailyForecast({
+    date: new Date(),
+    latestRequest
+  });
+
+  await ctx.reply(forecast, mainKeyboard());
+}
+
+async function sendLatestPdfReport(ctx) {
+  const requestId = getLatestRequestId(ctx.from);
+
+  if (!requestId) {
+    await ctx.reply("Сначала рассчитайте карту, чтобы я мог подготовить PDF-отчет.", startKeyboard());
+    return;
+  }
+
+  const request = getChartRequestById(requestId);
+
+  if (!request) {
+    await ctx.reply("Не нашел расчет. Создайте карту заново: /new", mainKeyboard());
+    return;
+  }
+
+  await sendPdfReport(ctx, request);
+}
+
+async function sendPdfReport(ctx, request) {
+  await ctx.reply("📄 Собираю PDF-отчет...");
+  const pdf = await buildNatalReportPdf({
+    birth: request.birth,
+    chart: request.chart
+  });
+
+  await ctx.replyWithDocument(
+    {
+      source: pdf,
+      filename: `natal-report-${request.id}.pdf`
+    },
+    {
+      caption: "📄 Ваш персональный PDF-отчет"
+    }
+  );
+}
+
+function getCompatibilityPerson(ctx) {
+  if (String(ctx.session.step).startsWith("compat_a")) {
+    return ctx.session.compatibility.personA;
+  }
+
+  return ctx.session.compatibility.personB;
+}
+
+function getCompatibilityPersonLabel(ctx) {
+  return String(ctx.session.step).startsWith("compat_a") ? "первого человека" : "второго человека";
 }
 
 function formatDateTime(value) {

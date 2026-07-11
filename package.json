@@ -10,12 +10,14 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "check": "node --check index.js && node --check src/bot/bot.js && node --check src/services/chartService.js && node --check src/services/interpretationService.js"
+    "check": "node --check index.js && node --check src/bot/bot.js && node --check src/services/chartService.js && node --check src/services/interpretationService.js && node --check src/services/compatibilityService.js && node --check src/services/dailyForecastService.js && node --check src/services/pdfReportService.js"
   },
   "dependencies": {
     "axios": "^1.7.9",
+    "dejavu-fonts-ttf": "^2.37.3",
     "dotenv": "^16.4.7",
     "geo-tz": "^8.0.0",
+    "pdfkit": "^0.19.1",
     "telegraf": "^4.16.3"
   },
   "optionalDependencies": {
