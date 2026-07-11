@@ -32,13 +32,52 @@ const FULL_REPORT_TEXT = [
   "Нажмите кнопку ниже и получите полный отчет, который поможет взглянуть на себя с новой стороны."
 ].join("\n");
 
+const HELP_TEXT = [
+  "❓ Помощь",
+  "",
+  "Чтобы рассчитать карту, мне нужны:",
+  "",
+  "• дата рождения в формате ГГГГ-ММ-ДД",
+  "• точное время рождения в формате ЧЧ:ММ",
+  "• место рождения: город и страна",
+  "",
+  "Чем точнее время рождения, тем точнее Асцендент и дома.",
+  "",
+  "Оплата полного отчета проходит через Telegram Stars. После оплаты бот автоматически отправит астральную карту и подробный разбор."
+].join("\n");
+
 function mainKeyboard() {
-  return Markup.keyboard([["🔮 Рассчитать карту"], ["📜 История"]]).resize();
+  return Markup.keyboard([
+    ["🔮 Рассчитать карту", "📜 История"],
+    ["✨ Полный отчёт", "❓ Помощь"]
+  ]).resize();
 }
 
 function detailedReportKeyboard(requestId) {
   const action = requestId ? `full_report:${requestId}` : "full_report";
   return Markup.inlineKeyboard([[Markup.button.callback("📖 Подробный отчет", action)]]);
+}
+
+function startKeyboard() {
+  return Markup.inlineKeyboard([[Markup.button.callback("🔮 Рассчитать карту", "start_chart")]]);
+}
+
+function helpKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback("🔮 Рассчитать карту", "start_chart")],
+    [Markup.button.callback("📜 Мои расчёты", "show_history")]
+  ]);
+}
+
+function fullReportIntroKeyboard(requestId) {
+  if (!requestId) {
+    return Markup.inlineKeyboard([[Markup.button.callback("🔮 Сначала рассчитать карту", "start_chart")]]);
+  }
+
+  return Markup.inlineKeyboard([
+    [Markup.button.callback("📖 Посмотреть описание", `full_report:${requestId}`)],
+    [Markup.button.callback("⭐ Оплатить звездами (~300р)", `pay_full_report:${requestId}`)]
+  ]);
 }
 
 function paymentKeyboard(requestId) {
@@ -65,6 +104,7 @@ function createBot() {
   });
 
   bot.hears("🔮 Рассчитать карту", askDate);
+  bot.action("start_chart", askDate);
   bot.command("new", askDate);
 
   bot.action(/^full_report(?::(\d+))?$/, async (ctx) => {
@@ -120,12 +160,40 @@ function createBot() {
     await ctx.reply("Главное меню", mainKeyboard());
   });
 
-  bot.hears("📜 История", async (ctx) => {
+  bot.hears("✨ Полный отчёт", async (ctx) => {
+    const requestId = getLatestRequestId(ctx.from);
+
+    if (!requestId) {
+      await ctx.reply(
+        "✨ Полный отчет создается по вашей натальной карте.\n\nСначала рассчитайте карту — после этого я смогу подготовить персональный разбор.",
+        fullReportIntroKeyboard(null)
+      );
+      return;
+    }
+
+    await ctx.reply(
+      "✨ Полный персональный отчет\n\nУ вас уже есть сохраненная карта. Вы можете посмотреть описание отчета или сразу перейти к оплате звездами.",
+      fullReportIntroKeyboard(requestId)
+    );
+  });
+
+  bot.hears("❓ Помощь", async (ctx) => {
+    await ctx.reply(HELP_TEXT, helpKeyboard());
+  });
+
+  bot.action("show_history", async (ctx) => {
+    await ctx.answerCbQuery();
+    await showHistory(ctx);
+  });
+
+  bot.hears("📜 История", showHistory);
+
+  async function showHistory(ctx) {
     const user = upsertUser(ctx.from);
     const history = getRecentChartRequests(user.id, 5);
 
     if (!history.length) {
-      await ctx.reply("Истории пока нет. Нажми «🔮 Рассчитать карту», чтобы создать первую.");
+      await ctx.reply("Истории пока нет. Нажми «🔮 Рассчитать карту», чтобы создать первую.", startKeyboard());
       return;
     }
 
@@ -140,7 +208,7 @@ function createBot() {
 
       await ctx.reply(text, detailedReportKeyboard(item.id));
     }
-  });
+  }
 
   bot.on("text", async (ctx) => {
     const step = ctx.session?.step;
