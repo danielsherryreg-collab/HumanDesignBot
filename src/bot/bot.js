@@ -1,3 +1,4 @@
+const path = require("path");
 const { Telegraf, Markup, session } = require("telegraf");
 const { config } = require("../config/config");
 const { upsertUser, saveChartRequest, getRecentChartRequests, getChartRequestById } = require("../db/database");
@@ -12,6 +13,15 @@ const STEPS = {
   TIME: "time",
   PLACE: "place"
 };
+
+const MAIN_MENU_IMAGE_PATH = path.resolve(__dirname, "..", "..", "assets", "main-menu.png");
+const MAIN_MENU_TEXT = [
+  "🌌 Главное меню",
+  "",
+  "Рассчитайте натальную карту и узнайте больше о своём характере, талантах, отношениях, деньгах и точках роста.",
+  "",
+  "Выберите действие ниже:"
+].join("\n");
 
 const FULL_REPORT_TEXT = [
   "🔮 Вы получили только краткий разбор своей натальной карты.",
@@ -108,6 +118,21 @@ async function sendWelcomeWindow(ctx) {
   await ctx.reply(WELCOME_TEXT, mainKeyboard());
 }
 
+async function sendMainMenu(ctx) {
+  try {
+    await ctx.replyWithPhoto(
+      { source: MAIN_MENU_IMAGE_PATH },
+      {
+        caption: MAIN_MENU_TEXT,
+        ...mainKeyboard()
+      }
+    );
+  } catch (error) {
+    console.error("Main menu image error", error);
+    await ctx.reply(MAIN_MENU_TEXT, mainKeyboard());
+  }
+}
+
 function createBot() {
   const bot = new Telegraf(config.botToken);
 
@@ -118,6 +143,7 @@ function createBot() {
     ctx.session = {};
 
     await sendWelcomeWindow(ctx);
+    await sendMainMenu(ctx);
   });
 
   bot.hears("🔮 Рассчитать карту", async (ctx) => {
@@ -190,7 +216,7 @@ function createBot() {
 
   bot.action("back_to_menu", async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.reply("Главное меню", mainKeyboard());
+    await sendMainMenu(ctx);
   });
 
   bot.hears("✨ Полный отчёт", async (ctx) => {
@@ -258,7 +284,7 @@ function createBot() {
       return handlePlace(ctx);
     }
 
-    return ctx.reply("Выбери действие на клавиатуре или отправь /new для нового расчета.", mainKeyboard());
+    return sendMainMenu(ctx);
   });
 
   bot.catch((error, ctx) => {
@@ -400,7 +426,8 @@ async function sendPaidFullReport(ctx, request) {
     await ctx.reply(part);
   }
 
-  await ctx.reply("Готово. Отчет можно перечитывать в этом чате — он останется в истории сообщений.", mainKeyboard());
+  await ctx.reply("Готово. Отчет можно перечитывать в этом чате — он останется в истории сообщений.");
+  await sendMainMenu(ctx);
 }
 
 function getRequestFromPayload(payload) {
