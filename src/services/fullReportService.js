@@ -232,15 +232,15 @@ function buildFullReport({ birth, chart }) {
 
 function buildNatalChartSvg({ birth, chart }) {
   const planets = Object.entries(chart.planets || {});
-  const aspectLines = (chart.aspects || []).slice(0, 18);
+  const aspectLines = getVisualAspectLines(planets, chart.aspects || []).slice(0, 28);
   const width = 1200;
   const height = 1600;
-  const center = { x: 600, y: 660 };
-  const outer = 430;
-  const zodiacRadius = 385;
-  const houseRadius = 332;
-  const aspectRadius = 238;
-  const planetRadius = 302;
+  const center = { x: 600, y: 675 };
+  const outer = 390;
+  const zodiacRadius = 350;
+  const houseRadius = 296;
+  const aspectRadius = 218;
+  const planetRadius = 268;
 
   const planetByLabel = new Map(
     planets.map(([key, value]) => [value.label, { key, ...value }])
@@ -321,20 +321,20 @@ function buildNatalChartSvg({ birth, chart }) {
     <filter id="glow"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
   </defs>
   <rect width="1200" height="1600" fill="url(#bg)"/>
+  <rect x="34" y="34" width="1132" height="1532" rx="42" class="page-border"/>
   <circle cx="135" cy="155" r="2" fill="#fff"/><circle cx="1045" cy="190" r="2" fill="#fff"/><circle cx="980" cy="910" r="2" fill="#fff"/><circle cx="210" cy="965" r="1.6" fill="#fff"/>
   <circle cx="1020" cy="420" r="75" fill="none" stroke="#725cff" stroke-width="1.2" opacity=".4"/>
   <circle cx="185" cy="425" r="42" fill="none" stroke="#57d6ff" stroke-width="1.2" opacity=".35"/>
 
-  <text x="600" y="92" class="kicker">PERSONAL NATAL CHART REPORT</text>
-  <text x="600" y="152" class="title">Натальная карта</text>
-  <text x="600" y="198" class="subtitle">${escapeXml(birth.date)} • ${escapeXml(birth.time)} • ${escapeXml(shortPlace(birth.place))}</text>
-  <text x="600" y="230" class="subtitle small">Timezone: ${escapeXml(birth.timezone)} • Ascendant: ${escapeXml(signInfo(chart.ascendant.sign).ru)}</text>
+  <text x="600" y="118" class="title">Натальная карта</text>
+  <text x="600" y="166" class="subtitle">${escapeXml(birth.date)} • ${escapeXml(birth.time)} • ${escapeXml(shortPlace(birth.place))}</text>
+  <text x="600" y="200" class="subtitle small">Часовой пояс: ${escapeXml(birth.timezone)} • Асцендент: ${escapeXml(signInfo(chart.ascendant.sign).ru)}</text>
 
-  <rect x="70" y="270" width="1060" height="780" rx="34" class="panel"/>
-  <circle cx="600" cy="660" r="430" class="ring"/>
-  <circle cx="600" cy="660" r="370" class="ring thin"/>
-  <circle cx="600" cy="660" r="303" class="ring thin"/>
-  <circle cx="600" cy="660" r="238" class="ring inner"/>
+  <rect x="70" y="245" width="1060" height="860" rx="34" class="panel"/>
+  <circle cx="600" cy="675" r="390" class="ring"/>
+  <circle cx="600" cy="675" r="334" class="ring thin"/>
+  <circle cx="600" cy="675" r="278" class="ring thin"/>
+  <circle cx="600" cy="675" r="218" class="ring inner"/>
   ${houses}
   ${signs}
   ${houseNumbers}
@@ -348,12 +348,12 @@ function buildNatalChartSvg({ birth, chart }) {
   ${aspectRows}
 
   <rect x="70" y="1525" width="1060" height="1" fill="#f7d783" opacity=".45"/>
-  <text x="600" y="1562" class="footer">Blue: harmonious aspects • Pink: tense aspects • Gold: conjunctions</text>
+  <text x="600" y="1562" class="footer">Голубой: гармоничные аспекты • Розовый: напряжение • Золотой: соединения</text>
   <style>
-    .kicker{fill:#57d6ff;font:700 20px Arial,sans-serif;text-anchor:middle;letter-spacing:4px;opacity:.88}
     .title{fill:#f7d783;font:700 56px Georgia,serif;text-anchor:middle;letter-spacing:1px}
     .subtitle,.footer{fill:#d8c7ff;font:500 24px Arial,sans-serif;text-anchor:middle}
     .small{font-size:20px;opacity:.82}
+    .page-border{fill:none;stroke:#f7d783;stroke-width:1.4;opacity:.55}
     .panel{fill:url(#panel);stroke:#f7d783;stroke-width:1.4;opacity:.95}
     .ring{fill:none;stroke:#f7d783;stroke-width:3;filter:url(#glow)}
     .thin{stroke-width:1.3;opacity:.65}
@@ -412,6 +412,55 @@ function formatAspects(aspects) {
     .slice(0, 6)
     .map((aspect) => `• ${aspect.from} ${aspect.type} ${aspect.to}, орб ${aspect.orb}°`)
     .join("\n");
+}
+
+function getVisualAspectLines(planets, aspects) {
+  const result = [...aspects];
+  const existing = new Set(
+    aspects.map((aspect) => [aspect.from, aspect.to].sort().join("|"))
+  );
+  const planetValues = planets.map(([, value]) => value);
+
+  for (let i = 0; i < planetValues.length; i += 1) {
+    for (let j = i + 1; j < planetValues.length; j += 1) {
+      const from = planetValues[i];
+      const to = planetValues[j];
+      const key = [from.label, to.label].sort().join("|");
+
+      if (existing.has(key)) {
+        continue;
+      }
+
+      const delta = Math.abs(from.longitude - to.longitude);
+      const distance = Math.min(delta, 360 - delta);
+
+      result.push({
+        from: from.label,
+        to: to.label,
+        type: inferVisualAspectType(distance),
+        orb: 0
+      });
+      existing.add(key);
+    }
+  }
+
+  return result;
+}
+
+function inferVisualAspectType(distance) {
+  if (distance <= 18 || distance >= 342) {
+    return "соединение";
+  }
+
+  if (distance > 45 && distance < 75) {
+    return "секстиль";
+  }
+
+  if (distance > 105 && distance < 135) {
+    return "трин";
+  }
+
+  return "квадрат";
 }
 
 function getAspectClass(type) {
