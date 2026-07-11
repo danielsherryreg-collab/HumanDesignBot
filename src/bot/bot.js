@@ -121,18 +121,15 @@ function createBot() {
   });
 
   bot.hears("🔮 Рассчитать карту", async (ctx) => {
-    await sendWelcomeWindow(ctx);
     await askDate(ctx);
   });
 
   bot.action("start_chart", async (ctx) => {
     await ctx.answerCbQuery();
-    await sendWelcomeWindow(ctx);
     await askDate(ctx);
   });
 
   bot.command("new", async (ctx) => {
-    await sendWelcomeWindow(ctx);
     await askDate(ctx);
   });
 
@@ -190,7 +187,6 @@ function createBot() {
   });
 
   bot.hears("✨ Полный отчёт", async (ctx) => {
-    await sendWelcomeWindow(ctx);
     const requestId = getLatestRequestId(ctx.from);
 
     if (!requestId) {
@@ -208,7 +204,6 @@ function createBot() {
   });
 
   bot.hears("❓ Помощь", async (ctx) => {
-    await sendWelcomeWindow(ctx);
     await ctx.reply(HELP_TEXT, helpKeyboard());
   });
 
@@ -220,7 +215,6 @@ function createBot() {
   bot.hears("📜 История", showHistory);
 
   async function showHistory(ctx) {
-    await sendWelcomeWindow(ctx);
     const user = upsertUser(ctx.from);
     const history = getRecentChartRequests(user.id, 5);
 
