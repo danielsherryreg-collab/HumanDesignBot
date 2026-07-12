@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "check": "node --check index.js && node --check src/bot/bot.js && node --check src/services/chartService.js && node --check src/services/interpretationService.js && node --check src/services/compatibilityService.js && node --check src/services/dailyForecastService.js && node --check src/services/pdfReportService.js"
+    "check": "node --check index.js && node --check src/bot/bot.js && node --check src/services/chartService.js && node --check src/services/interpretationService.js && node --check src/services/compatibilityService.js && node --check src/services/dailyForecastService.js && node --check src/services/pdfReportService.js && node --check src/services/googleSheetsAnalyticsService.js"
   },
   "dependencies": {
     "axios": "^1.7.9",

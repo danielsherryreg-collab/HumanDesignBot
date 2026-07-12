@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { config } = require("../config/config");
+const { sendAnalyticsEvent } = require("../services/googleSheetsAnalyticsService");
 
 let store;
 
@@ -94,6 +95,7 @@ function trackEvent({ userId, eventName, source = null, metadata = null }) {
   database.nextAnalyticsEventId += 1;
   database.analyticsEvents.push(row);
   persist();
+  void sendAnalyticsEvent(row);
   return row;
 }
 
