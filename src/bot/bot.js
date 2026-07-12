@@ -1,7 +1,7 @@
 const path = require("path");
 const { Telegraf, Markup, session } = require("telegraf");
 const { config } = require("../config/config");
-const { upsertUser, saveChartRequest, getRecentChartRequests, getChartRequestById } = require("../db/database");
+const { upsertUser, saveChartRequest, getRecentChartRequests, getChartRequestById, trackEvent, getAnalyticsSummary } = require("../db/database");
 const { geocodePlace, getTimezone } = require("../services/geoService");
 const { calculateNatalChart } = require("../services/chartService");
 const { buildInterpretation } = require("../services/interpretationService");
@@ -165,7 +165,9 @@ function createBot() {
   bot.use(session());
 
   bot.start(async (ctx) => {
-    upsertUser(ctx.from);
+    const source = parseStartSource(ctx.startPayload);
+    const user = upsertUser(ctx.from, source);
+    trackEvent({ userId: user.id, eventName: "bot_started", source });
     ctx.session = {};
 
     await sendWelcomeWindow(ctx);
@@ -200,6 +202,7 @@ function createBot() {
   bot.action(/^full_report(?::(\d+))?$/, async (ctx) => {
     await ctx.answerCbQuery();
     const requestId = ctx.match?.[1] || getLatestRequestId(ctx.from);
+    trackUserEvent(ctx.from, "paywall_viewed", { requestId });
     await ctx.reply(FULL_REPORT_TEXT, paymentKeyboard(requestId));
   });
 
@@ -219,7 +222,8 @@ function createBot() {
       return;
     }
 
-    await sendPaidFullReport(ctx, request);
+    trackUserEvent(ctx.from, "payment_started", { requestId: request.id });
+    await sendFullReportInvoice(ctx, request.id);
   });
 
   bot.action(/^pdf_report(?::(\d+))?$/, async (ctx) => {
@@ -247,6 +251,7 @@ function createBot() {
     const request = getRequestFromPayload(query.invoice_payload);
 
     if (!request || request.user_id !== upsertUser(query.from).id || query.currency !== "XTR" || query.total_amount !== expectedAmount) {
+      trackUserEvent(query.from, "payment_failed", { reason: "pre_checkout_validation" });
       await ctx.answerPreCheckoutQuery(false, "Платеж не прошел проверку. Попробуйте еще раз.");
       return;
     }
@@ -264,11 +269,36 @@ function createBot() {
     const request = getRequestFromPayload(payment.invoice_payload);
 
     if (!request) {
+      trackUserEvent(ctx.from, "payment_failed", { reason: "request_not_found" });
       await ctx.reply("✅ Оплата прошла успешно, но я не нашел расчет. Напишите /new и создайте карту заново.", mainKeyboard());
       return;
     }
 
+    trackUserEvent(ctx.from, "payment_succeeded", {
+      requestId: request.id,
+      amount: payment.total_amount,
+      currency: payment.currency,
+      telegramPaymentChargeId: payment.telegram_payment_charge_id
+    });
     await sendPaidFullReport(ctx, request);
+  });
+
+  bot.command("analytics", async (ctx) => {
+    if (!config.adminTelegramIds.includes(ctx.from.id)) return;
+    const summary = getAnalyticsSummary(7);
+    const count = summary.counts;
+    await ctx.reply([
+      "Аналитика за 7 дней", "",
+      `Запуски: ${count.bot_started}`,
+      `Начали расчет: ${count.calculation_started}`,
+      `Заполнили данные: ${count.birth_data_completed}`,
+      `Получили результат: ${count.calculation_completed}`,
+      `Увидели оффер: ${count.paywall_viewed}`,
+      `Начали оплату: ${count.payment_started}`,
+      `Оплатили: ${count.payment_succeeded}`,
+      `Получили отчет: ${count.report_delivered}`, "",
+      `Выручка: ${summary.revenueStars} Stars`
+    ].join("\n"));
   });
 
   bot.action("back_to_menu", async (ctx) => {
@@ -365,7 +395,8 @@ function createBot() {
 }
 
 async function askDate(ctx) {
-  upsertUser(ctx.from);
+  const user = upsertUser(ctx.from);
+  trackEvent({ userId: user.id, eventName: "calculation_started" });
   ctx.session = {
     step: STEPS.DATE,
     birth: {}
@@ -412,6 +443,8 @@ async function handlePlace(ctx) {
 
   await ctx.reply("Секунду, ищу координаты, часовой пояс и считаю карту...");
 
+  trackUserEvent(ctx.from, "birth_data_completed");
+
   try {
     const geo = await geocodePlace(placeInput);
     const timezone = getTimezone(geo.lat, geo.lon);
@@ -432,11 +465,13 @@ async function handlePlace(ctx) {
       chart,
       reportText
     });
+    trackEvent({ userId: user.id, eventName: "calculation_completed", metadata: { requestId: savedRequest.id } });
 
     ctx.session = {};
 
     await ctx.reply(reportText, detailedReportKeyboard(savedRequest.id));
   } catch (error) {
+    trackUserEvent(ctx.from, "calculation_failed", { reason: error.message || "unknown" });
     if (error.message === "PLACE_NOT_FOUND") {
       await ctx.reply("Не нашел такое место. Попробуй написать город и страну латиницей или подробнее.");
       return;
@@ -657,7 +692,18 @@ async function sendPaidFullReport(ctx, request) {
   }
 
   await ctx.reply("Готово. Отчет можно перечитывать в этом чате — он останется в истории сообщений.");
+  trackUserEvent(ctx.from, "report_delivered", { requestId: request.id });
   await sendMainMenu(ctx);
+}
+
+function parseStartSource(payload) {
+  const source = String(payload || "").trim().toLowerCase();
+  return /^[a-z0-9_-]{1,64}$/.test(source) ? source : null;
+}
+
+function trackUserEvent(from, eventName, metadata = null) {
+  const user = upsertUser(from);
+  return trackEvent({ userId: user.id, eventName, metadata });
 }
 
 function getRequestFromPayload(payload) {

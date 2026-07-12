@@ -10,7 +10,8 @@ const config = {
   nominatimEmail: process.env.NOMINATIM_EMAIL || "",
   nominatimUserAgent: process.env.NOMINATIM_USER_AGENT || "HumanDesignNatalBot/0.1",
   ephemerisPath: path.resolve(rootDir, process.env.EPHEMERIS_PATH || "./ephe"),
-  fullReportStars: Number(process.env.FULL_REPORT_STARS || 150)
+  fullReportStars: Number(process.env.FULL_REPORT_STARS || 150),
+  adminTelegramIds: String(process.env.ADMIN_TELEGRAM_IDS || "").split(",").map((value) => Number(value.trim())).filter((value) => Number.isFinite(value) && value > 0)
 };
 
 module.exports = { config };
