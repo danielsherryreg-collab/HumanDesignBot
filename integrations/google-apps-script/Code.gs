@@ -1,5 +1,6 @@
 const STATISTICS_SHEET = "Статистика";
 const EVENTS_SHEET = "События";
+const SPREADSHEET_ID = "1TymmU0TCkH9wgrdg1R5C7_FF6_R_RZYDRocfi4qgFjY";
 
 const STATISTICS_HEADERS = [
   "Код публикации",
@@ -50,6 +51,11 @@ function doPost(e) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function setupSheets() {
+  getOrCreateSheet(STATISTICS_SHEET, STATISTICS_HEADERS);
+  getOrCreateSheet(EVENTS_SHEET, ["Дата", "Пользователь", "Событие", "Код публикации", "Площадка", "Рубрика", "Номер публикации", "Данные"]);
 }
 
 function updateStatistics(event) {
@@ -106,7 +112,7 @@ function findOrCreateSourceRow(sheet, source, event) {
 }
 
 function getOrCreateSheet(name, headers) {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = spreadsheet.getSheetByName(name) || spreadsheet.insertSheet(name);
 
   if (sheet.getLastRow() === 0) {
