@@ -28,7 +28,10 @@ DATABASE_PATH=./data/bot.json
 NOMINATIM_EMAIL=твоя_почта@example.com
 NOMINATIM_USER_AGENT=HumanDesignNatalBot/0.1
 EPHEMERIS_PATH=./ephe
-FULL_REPORT_STARS=150
+FULL_REPORT_STARS=250
+COMPATIBILITY_REPORT_STARS=199
+MONTH_FORECAST_STARS=149
+BUNDLE_REPORT_STARS=399
 ADMIN_TELEGRAM_IDS=123456789
 ```
 
@@ -107,8 +110,8 @@ EPHEMERIS_PATH=./ephe
 
 ## Следующие функции
 
-- PDF-отчет.
-- Оплата за полный разбор.
+- Тематический выбор перед оплатой: отношения, работа и деньги, предназначение, энергия и решения.
+- Оплата за полный разбор через Telegram Stars.
 - Выбор языка отчета.
 - Более глубокая AI-интерпретация.
 - Админ-панель или экспорт истории.

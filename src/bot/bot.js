@@ -33,23 +33,52 @@ const MAIN_MENU_TEXT = [
 ].join("\n");
 
 const FULL_REPORT_TEXT = [
-  "🔮 Вы получили только краткий разбор своей натальной карты.",
+  "🔮 Персональная инструкция к себе",
   "",
-  "Это менее 10% информации, которую можно узнать по вашим дате, времени и месту рождения.",
+  `Цена: ${config.fullReportStars} ⭐`,
   "",
-  "✨ В полном персональном отчете вы узнаете:",
+  "Почему вы принимаете именно такие решения, где теряете энергию и как действовать в отношениях и работе в соответствии со своей картой.",
   "",
-  "• Ваши сильные и слабые стороны.",
-  "• Предназначение и скрытые таланты.",
-  "• Что мешает достигать целей.",
-  "• Особенности отношений и совместимости.",
-  "• Наиболее подходящие сферы для карьеры и финансов.",
-  "• Главные жизненные уроки и точки роста.",
+  "Внутри полного отчета:",
   "",
-  "📖 Это индивидуальный разбор, созданный именно по вашим данным. Никаких общих гороскопов — только персональная интерпретация вашей натальной карты.",
+  "• решения и личная стратегия действий",
+  "• где вы теряете энергию и как ее возвращать",
+  "• отношения, близость и повторяющиеся сценарии",
+  "• работа, деньги и сильные стороны",
+  "• предназначение, таланты и точки роста",
+  "• понятный план на ближайшие 7 дней",
   "",
-  "Нажмите кнопку ниже и получите полный отчет, который поможет взглянуть на себя с новой стороны."
+  "Готов сразу после оплаты • останется у вас навсегда",
+  "",
+  "Если отчет не сформируется технически, Stars будут возвращены."
 ].join("\n");
+
+const REPORT_THEMES = {
+  relationships: {
+    label: "❤️ Отношения",
+    title: "Отношения",
+    invoiceLabel: "Отчет: отношения",
+    invoiceDescription: "Персональный отчет про отношения, близость и повторяющиеся сценарии по вашей натальной карте."
+  },
+  work: {
+    label: "💼 Работа и деньги",
+    title: "Работа и деньги",
+    invoiceLabel: "Отчет: работа и деньги",
+    invoiceDescription: "Персональный отчет про сильные стороны, деньги, карьерный фокус и рабочую энергию."
+  },
+  purpose: {
+    label: "🧭 Предназначение",
+    title: "Предназначение",
+    invoiceLabel: "Отчет: предназначение",
+    invoiceDescription: "Персональный отчет про таланты, жизненный вектор и точки роста по вашей натальной карте."
+  },
+  energy: {
+    label: "⚡ Энергия и решения",
+    title: "Энергия и решения",
+    invoiceLabel: "Отчет: энергия и решения",
+    invoiceDescription: "Персональный отчет про решения, энергию, внутренний ритм и практичные действия."
+  }
+};
 
 const WELCOME_TEXT = [
   "✨ Ваша натальная карта — это личная карта характера, талантов и жизненных сценариев.",
@@ -82,7 +111,11 @@ const HELP_TEXT = [
   "",
   "Прогноз дня можно смотреть каждый день — если карта уже рассчитана, бот добавит персональный акцент.",
   "",
-  "Оплата полного отчета проходит через Telegram Stars. После оплаты бот автоматически отправит астральную карту и подробный разбор."
+  "Бесплатно: краткая карта, прогноз дня, история и мини-совместимость.",
+  "",
+  `Платно: полный отчет за ${config.fullReportStars} ⭐. PDF входит в полный отчет.`,
+  "",
+  "Оплата проходит через Telegram Stars. После оплаты бот автоматически отправит астральную карту, подробный разбор и PDF."
 ].join("\n");
 
 const COMPATIBILITY_INTRO_TEXT = [
@@ -103,8 +136,8 @@ function mainKeyboard() {
 }
 
 function detailedReportKeyboard(requestId) {
-  const action = requestId ? `full_report:${requestId}` : "full_report";
-  return Markup.inlineKeyboard([[Markup.button.callback("📖 Подробный отчет", action)]]);
+  const action = requestId ? `report_themes:${requestId}` : "report_themes";
+  return Markup.inlineKeyboard([[Markup.button.callback(`✨ Полный отчет — ${config.fullReportStars} ⭐`, action)]]);
 }
 
 function startKeyboard() {
@@ -124,20 +157,137 @@ function fullReportIntroKeyboard(requestId) {
   }
 
   return Markup.inlineKeyboard([
-    [Markup.button.callback("📖 Посмотреть описание", `full_report:${requestId}`)],
-    [Markup.button.callback("🌌 Получить полный отчет", `pay_full_report:${requestId}`)],
-    [Markup.button.callback("📄 Получить PDF", `pdf_report:${requestId}`)]
+    [Markup.button.callback("✨ Выбрать, что разобрать", `report_themes:${requestId}`)],
+    [Markup.button.callback(`🌌 Полный отчет — ${config.fullReportStars} ⭐`, `full_report:${requestId}:general`)]
   ]);
 }
 
-function paymentKeyboard(requestId) {
-  const action = requestId ? `pay_full_report:${requestId}` : "pay_full_report";
-  const pdfAction = requestId ? `pdf_report:${requestId}` : "pdf_report";
+function reportThemeKeyboard(requestId) {
+  if (!requestId) {
+    return Markup.inlineKeyboard([[Markup.button.callback("🔮 Сначала рассчитать карту", "start_chart")]]);
+  }
+
   return Markup.inlineKeyboard([
-    [Markup.button.callback("🌌 Получить полный отчет", action)],
-    [Markup.button.callback("📄 Получить PDF", pdfAction)],
+    [Markup.button.callback(REPORT_THEMES.relationships.label, `full_report:${requestId}:relationships`)],
+    [Markup.button.callback(REPORT_THEMES.work.label, `full_report:${requestId}:work`)],
+    [Markup.button.callback(REPORT_THEMES.purpose.label, `full_report:${requestId}:purpose`)],
+    [Markup.button.callback(REPORT_THEMES.energy.label, `full_report:${requestId}:energy`)]
+  ]);
+}
+
+function paymentKeyboard(requestId, themeKey = "general") {
+  const action = requestId ? `pay_full_report:${requestId}:${themeKey}` : "pay_full_report";
+
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`🌌 Получить за ${config.fullReportStars} ⭐`, action)],
+    [Markup.button.callback("🔁 Выбрать другую тему", `report_themes:${requestId}`)],
     [Markup.button.callback("⬅️ Обратно в меню", "back_to_menu")]
   ]);
+}
+
+function getTheme(themeKey) {
+  return REPORT_THEMES[themeKey] || {
+    label: "✨ Полный отчет",
+    title: "Полный отчет",
+    invoiceLabel: "Полный отчет",
+    invoiceDescription: "Персональная инструкция к себе по вашей натальной карте."
+  };
+}
+
+function buildThemeQuestionText() {
+  return [
+    "Краткий разбор готов.",
+    "",
+    "Что сейчас важнее всего понять?",
+    "",
+    `Выберите тему — я покажу персональный тизер именно по ней, а потом можно будет открыть полный отчет за ${config.fullReportStars} ⭐.`
+  ].join("\n");
+}
+
+function buildThemeTeaser(request, themeKey) {
+  const chart = request.chart || {};
+  const planets = chart.planets || {};
+  const sun = planets.sun || {};
+  const moon = planets.moon || {};
+  const venus = planets.venus || {};
+  const mars = planets.mars || {};
+  const saturn = planets.saturn || {};
+  const ascendant = chart.ascendant || {};
+
+  const teasers = {
+    relationships: [
+      "❤️ Тизер по теме: отношения",
+      "",
+      `По вашей карте я бы начал с Венеры в ${venus.sign || "вашем знаке"} и Луны в ${moon.sign || "вашем знаке"}. Это связка про то, как вы ищете близость, где ждете поддержки и почему одни сценарии повторяются снова и снова.`,
+      "",
+      "В полном отчете я разберу:",
+      "• что вам действительно важно в любви",
+      "• где вы можете соглашаться не из желания, а из внутреннего напряжения",
+      "• какой партнерский ритм помогает не терять себя",
+      "• что делать уже сейчас, чтобы отношения стали спокойнее и честнее"
+    ],
+    work: [
+      "💼 Тизер по теме: работа и деньги",
+      "",
+      `В вашей карте особенно важны Солнце в ${sun.sign || "вашем знаке"}, Марс в ${mars.sign || "вашем знаке"} и Сатурн в ${saturn.sign || "вашем знаке"}. Это показывает, где есть сила действия, где нужна дисциплина и почему деньги могут приходить легче через определенный стиль работы.`,
+      "",
+      "В полном отчете я разберу:",
+      "• какие задачи дают вам энергию, а какие забирают ее",
+      "• где ваша сильная профессиональная роль",
+      "• какие денежные привычки стоит усилить",
+      "• как выбрать направление без ощущения, что вы снова начинаете с нуля"
+    ],
+    purpose: [
+      "🧭 Тизер по теме: предназначение",
+      "",
+      `Солнце в ${sun.sign || "вашем знаке"} и Асцендент в ${ascendant.sign || "вашем знаке"} дают два слоя: кем вы становитесь внутри и как входите в жизнь снаружи. Между ними часто прячется главный вектор роста.`,
+      "",
+      "В полном отчете я разберу:",
+      "• какие таланты стоит перестать считать обычными",
+      "• где ваш естественный путь развития",
+      "• какие страхи могут сбивать с направления",
+      "• план на 7 дней, чтобы не просто понять себя, а начать действовать"
+    ],
+    energy: [
+      "⚡ Тизер по теме: энергия и решения",
+      "",
+      `Луна в ${moon.sign || "вашем знаке"}, Марс в ${mars.sign || "вашем знаке"} и Асцендент в ${ascendant.sign || "вашем знаке"} показывают, как вы реагируете, запускаете действия и где быстрее всего теряете внутренний ресурс.`,
+      "",
+      "В полном отчете я разберу:",
+      "• какие решения вам лучше не принимать на эмоциях",
+      "• где вы перегружаете себя чужими ожиданиями",
+      "• как возвращать энергию без жесткого давления на себя",
+      "• какой темп действий для вас реально работает"
+    ]
+  };
+
+  const selected = teasers[themeKey] || [
+    "🔮 Персональная инструкция к себе",
+    "",
+    `В вашей карте я вижу несколько опор: Солнце в ${sun.sign || "вашем знаке"}, Луна в ${moon.sign || "вашем знаке"} и Асцендент в ${ascendant.sign || "вашем знаке"}. Краткий разбор показывает только верхний слой — полный отчет соединяет решения, энергию, отношения и работу в одну понятную систему.`,
+    "",
+    "В полном отчете я разберу:",
+    "• почему вы принимаете именно такие решения",
+    "• где теряете энергию",
+    "• как действовать в отношениях и работе",
+    "• какие шаги сделать в ближайшие 7 дней"
+  ];
+
+  return [
+    ...selected,
+    "",
+    FULL_REPORT_TEXT,
+    "",
+    `Стоимость: ${config.fullReportStars} ⭐`
+  ].join("\n");
+}
+
+async function sendReportThemeQuestion(ctx, requestId) {
+  await ctx.reply(buildThemeQuestionText(), reportThemeKeyboard(requestId));
+}
+
+async function sendFullReportOffer(ctx, request, themeKey = "general") {
+  await ctx.reply(buildThemeTeaser(request, themeKey), paymentKeyboard(request.id, themeKey));
 }
 
 async function sendWelcomeWindow(ctx) {
@@ -199,16 +349,43 @@ function createBot() {
     await askDate(ctx);
   });
 
-  bot.action(/^full_report(?::(\d+))?$/, async (ctx) => {
+  bot.action(/^report_themes(?::(\d+))?$/, async (ctx) => {
     await ctx.answerCbQuery();
     const requestId = ctx.match?.[1] || getLatestRequestId(ctx.from);
+
+    if (!requestId) {
+      await ctx.reply("Сначала рассчитайте карту, чтобы я мог подготовить персональный отчет.", mainKeyboard());
+      return;
+    }
+
     trackUserEvent(ctx.from, "paywall_viewed", { requestId });
-    await ctx.reply(FULL_REPORT_TEXT, paymentKeyboard(requestId));
+    await sendReportThemeQuestion(ctx, requestId);
   });
 
-  bot.action(/^pay_full_report(?::(\d+))?$/, async (ctx) => {
+  bot.action(/^full_report(?::(\d+))?(?::([a-z_]+))?$/, async (ctx) => {
     await ctx.answerCbQuery();
     const requestId = ctx.match?.[1] || getLatestRequestId(ctx.from);
+    const themeKey = ctx.match?.[2] || "general";
+
+    if (!requestId) {
+      await ctx.reply("Сначала рассчитайте карту, чтобы я мог подготовить персональный отчет.", mainKeyboard());
+      return;
+    }
+
+    const request = getChartRequestById(requestId);
+
+    if (!request) {
+      await ctx.reply("Не нашел расчет. Создайте карту заново: /new", mainKeyboard());
+      return;
+    }
+
+    await sendFullReportOffer(ctx, request, themeKey);
+  });
+
+  bot.action(/^pay_full_report(?::(\d+))?(?::([a-z_]+))?$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const requestId = ctx.match?.[1] || getLatestRequestId(ctx.from);
+    const themeKey = ctx.match?.[2] || "general";
 
     if (!requestId) {
       await ctx.reply("Сначала рассчитайте карту, чтобы я мог подготовить полный отчет.", mainKeyboard());
@@ -222,8 +399,8 @@ function createBot() {
       return;
     }
 
-    trackUserEvent(ctx.from, "payment_started", { requestId: request.id });
-    await sendFullReportInvoice(ctx, request.id);
+    trackUserEvent(ctx.from, "payment_started", { requestId: request.id, themeKey });
+    await sendFullReportInvoice(ctx, request, themeKey);
   });
 
   bot.action(/^pdf_report(?::(\d+))?$/, async (ctx) => {
@@ -242,7 +419,10 @@ function createBot() {
       return;
     }
 
-    await sendPdfReport(ctx, request);
+    await ctx.reply(
+      `📄 PDF входит в полный персональный отчет за ${config.fullReportStars} ⭐.\n\nСначала выберите, что сейчас важнее всего понять — после оплаты я отправлю полный разбор и файл с вашей картой.`,
+      reportThemeKeyboard(request.id)
+    );
   });
 
   bot.on("pre_checkout_query", async (ctx) => {
@@ -278,9 +458,10 @@ function createBot() {
       requestId: request.id,
       amount: payment.total_amount,
       currency: payment.currency,
-      telegramPaymentChargeId: payment.telegram_payment_charge_id
+      telegramPaymentChargeId: payment.telegram_payment_charge_id,
+      themeKey: getThemeFromPayload(payment.invoice_payload)
     });
-    await sendPaidFullReport(ctx, request);
+    await sendPaidFullReport(ctx, request, getThemeFromPayload(payment.invoice_payload));
   });
 
   bot.command("analytics", async (ctx) => {
@@ -311,14 +492,14 @@ function createBot() {
 
     if (!requestId) {
       await ctx.reply(
-        "✨ Полный отчет создается по вашей натальной карте.\n\nСначала рассчитайте карту — после этого я смогу подготовить персональный разбор.",
+        `✨ Полный отчет создается по вашей натальной карте.\n\nЦена: ${config.fullReportStars} ⭐. PDF входит в отчет.\n\nСначала рассчитайте карту — после этого я смогу подготовить персональный разбор.`,
         fullReportIntroKeyboard(null)
       );
       return;
     }
 
     await ctx.reply(
-      "✨ Полный персональный отчет\n\nУ вас уже есть сохраненная карта. Вы можете посмотреть описание отчета или сразу открыть тестовую выдачу полного отчета.",
+      `✨ Полный персональный отчет\n\nЦена: ${config.fullReportStars} ⭐. PDF входит в отчет.\n\nУ вас уже есть сохраненная карта. Выберите, что сейчас важнее всего понять — я покажу персональный тизер и открою оплату через Telegram Stars.`,
       fullReportIntroKeyboard(requestId)
     );
   });
@@ -469,7 +650,8 @@ async function handlePlace(ctx) {
 
     ctx.session = {};
 
-    await ctx.reply(reportText, detailedReportKeyboard(savedRequest.id));
+    await ctx.reply(reportText);
+    await sendReportThemeQuestion(ctx, savedRequest.id);
   } catch (error) {
     trackUserEvent(ctx.from, "calculation_failed", { reason: error.message || "unknown" });
     if (error.message === "PLACE_NOT_FOUND") {
@@ -599,7 +781,7 @@ async function sendLatestPdfReport(ctx) {
   const requestId = getLatestRequestId(ctx.from);
 
   if (!requestId) {
-    await ctx.reply("Сначала рассчитайте карту, чтобы я мог подготовить PDF-отчет.", startKeyboard());
+    await ctx.reply("Сначала рассчитайте карту, чтобы я мог подготовить персональный PDF-отчет.", startKeyboard());
     return;
   }
 
@@ -610,7 +792,10 @@ async function sendLatestPdfReport(ctx) {
     return;
   }
 
-  await sendPdfReport(ctx, request);
+  await ctx.reply(
+    `📄 PDF входит в полный персональный отчет за ${config.fullReportStars} ⭐.\n\nВыберите тему, которая сейчас важнее всего — я покажу персональный тизер и открою оплату через Telegram Stars.`,
+    reportThemeKeyboard(request.id)
+  );
 }
 
 async function sendPdfReport(ctx, request) {
@@ -650,23 +835,26 @@ function formatDateTime(value) {
   });
 }
 
-async function sendFullReportInvoice(ctx, requestId) {
+async function sendFullReportInvoice(ctx, request, themeKey = "general") {
+  const theme = getTheme(themeKey);
+
   await ctx.replyWithInvoice({
-    title: "Полный персональный отчет",
-    description: "Подробная интерпретация натальной карты по вашим дате, времени и месту рождения.",
-    payload: `full_report:${requestId}:${ctx.from.id}:${Date.now()}`,
+    title: `Персональная инструкция к себе — ${config.fullReportStars} ⭐`,
+    description: `${theme.invoiceDescription} PDF входит в стоимость.`,
+    payload: `full_report:${request.id}:${ctx.from.id}:${themeKey}:${Date.now()}`,
     provider_token: "",
     currency: "XTR",
     prices: [
       {
-        label: "Полный отчет",
+        label: theme.invoiceLabel,
         amount: config.fullReportStars
       }
     ]
   });
 }
 
-async function sendPaidFullReport(ctx, request) {
+async function sendPaidFullReport(ctx, request, themeKey = "general") {
+  const theme = getTheme(themeKey);
   const svg = buildNatalChartSvg({
     birth: request.birth,
     chart: request.chart
@@ -676,7 +864,7 @@ async function sendPaidFullReport(ctx, request) {
     chart: request.chart
   });
 
-  await ctx.reply("✅ Оплата прошла успешно. Готовлю ваш полный персональный отчет...");
+  await ctx.reply(`✅ Оплата прошла успешно. Готовлю ваш полный персональный отчет.\n\nВыбранная тема: ${theme.title}`);
   await ctx.replyWithDocument(
     {
       source: Buffer.from(svg, "utf8"),
@@ -689,6 +877,26 @@ async function sendPaidFullReport(ctx, request) {
 
   for (const part of reportParts) {
     await ctx.reply(part);
+  }
+
+  try {
+    const pdf = await buildNatalReportPdf({
+      birth: request.birth,
+      chart: request.chart
+    });
+
+    await ctx.replyWithDocument(
+      {
+        source: pdf,
+        filename: `natal-report-${request.id}.pdf`
+      },
+      {
+        caption: "📄 PDF-версия полного отчета"
+      }
+    );
+  } catch (error) {
+    console.error("Paid PDF report error", error);
+    await ctx.reply("Текстовый отчет готов. PDF не сформировался технически — напишите в поддержку, чтобы мы вернули Stars или отправили файл вручную.");
   }
 
   await ctx.reply("Готово. Отчет можно перечитывать в этом чате — он останется в истории сообщений.");
@@ -709,6 +917,11 @@ function trackUserEvent(from, eventName, metadata = null) {
 function getRequestFromPayload(payload) {
   const [, requestId] = String(payload || "").split(":");
   return requestId ? getChartRequestById(requestId) : null;
+}
+
+function getThemeFromPayload(payload) {
+  const [, , , themeKey] = String(payload || "").split(":");
+  return themeKey || "general";
 }
 
 function getLatestRequestId(from) {

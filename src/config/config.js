@@ -10,7 +10,10 @@ const config = {
   nominatimEmail: process.env.NOMINATIM_EMAIL || "",
   nominatimUserAgent: process.env.NOMINATIM_USER_AGENT || "HumanDesignNatalBot/0.1",
   ephemerisPath: path.resolve(rootDir, process.env.EPHEMERIS_PATH || "./ephe"),
-  fullReportStars: Number(process.env.FULL_REPORT_STARS || 150),
+  fullReportStars: Number(process.env.FULL_REPORT_STARS || 250),
+  compatibilityReportStars: Number(process.env.COMPATIBILITY_REPORT_STARS || 199),
+  monthForecastStars: Number(process.env.MONTH_FORECAST_STARS || 149),
+  bundleReportStars: Number(process.env.BUNDLE_REPORT_STARS || 399),
   adminTelegramIds: String(process.env.ADMIN_TELEGRAM_IDS || "").split(",").map((value) => Number(value.trim())).filter((value) => Number.isFinite(value) && value > 0),
   googleSheetsWebhookUrl: process.env.GOOGLE_SHEETS_WEBHOOK_URL || "",
   googleSheetsSecret: process.env.GOOGLE_SHEETS_SECRET || ""
