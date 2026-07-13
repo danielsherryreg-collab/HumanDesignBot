@@ -450,6 +450,12 @@ function createBot() {
 
     if (!request) {
       trackUserEvent(ctx.from, "payment_failed", { reason: "request_not_found" });
+      void notifyAdmins(bot, buildPaymentFailureNotification({
+        from: ctx.from,
+        payment,
+        requestId: null,
+        reason: "Оплата получена, но расчёт не найден"
+      }));
       await ctx.reply("✅ Оплата прошла успешно, но я не нашел расчет. Напишите /new и создайте карту заново.", mainKeyboard());
       return;
     }
@@ -461,7 +467,33 @@ function createBot() {
       telegramPaymentChargeId: payment.telegram_payment_charge_id,
       themeKey: getThemeFromPayload(payment.invoice_payload)
     });
-    await sendPaidFullReport(ctx, request, getThemeFromPayload(payment.invoice_payload));
+
+    const user = upsertUser(ctx.from);
+    void notifyAdmins(bot, buildPaymentNotification({
+      from: ctx.from,
+      user,
+      payment,
+      requestId: request.id
+    }));
+
+    try {
+      await sendPaidFullReport(ctx, request, getThemeFromPayload(payment.invoice_payload));
+      void notifyAdmins(bot, buildReportDeliveredNotification({
+        from: ctx.from,
+        user,
+        payment,
+        requestId: request.id
+      }));
+    } catch (error) {
+      console.error("Paid report delivery error", error);
+      void notifyAdmins(bot, buildPaymentFailureNotification({
+        from: ctx.from,
+        payment,
+        requestId: request.id,
+        reason: error.message || "Неизвестная ошибка выдачи"
+      }));
+      await ctx.reply("Оплата получена, но при выдаче отчета произошла техническая ошибка. Мы уже получили уведомление и проверим покупку.", mainKeyboard());
+    }
   });
 
   bot.command("analytics", async (ctx) => {
@@ -912,6 +944,64 @@ function parseStartSource(payload) {
 function trackUserEvent(from, eventName, metadata = null) {
   const user = upsertUser(from);
   return trackEvent({ userId: user.id, eventName, metadata });
+}
+
+async function notifyAdmins(bot, message) {
+  await Promise.all(config.adminTelegramIds.map(async (adminId) => {
+    try {
+      await bot.telegram.sendMessage(adminId, message);
+    } catch (error) {
+      console.error(`Admin notification error (${adminId})`, error.message);
+    }
+  }));
+}
+
+function buildPaymentNotification({ from, user, payment, requestId }) {
+  return [
+    "💰 Новая покупка",
+    "",
+    `Пользователь: ${formatAdminUser(from)}`,
+    `Сумма: ${payment.total_amount} Stars`,
+    `Источник: ${getUserSource(user)}`,
+    `Расчёт: №${requestId}`,
+    `Дата: ${formatAdminDate(new Date())}`
+  ].join("\n");
+}
+
+function buildReportDeliveredNotification({ from, user, payment, requestId }) {
+  return [
+    "✅ Отчёт успешно выдан",
+    "",
+    `Пользователь: ${formatAdminUser(from)}`,
+    `Сумма: ${payment.total_amount} Stars`,
+    `Источник: ${getUserSource(user)}`,
+    `Расчёт: №${requestId}`
+  ].join("\n");
+}
+
+function buildPaymentFailureNotification({ from, payment, requestId, reason }) {
+  return [
+    "🚨 Оплата получена, но отчёт не выдан",
+    "",
+    `Пользователь: ${formatAdminUser(from)}`,
+    `Сумма: ${payment.total_amount} Stars`,
+    `Расчёт: ${requestId ? `№${requestId}` : "не найден"}`,
+    `Ошибка: ${String(reason).slice(0, 500)}`,
+    `Дата: ${formatAdminDate(new Date())}`
+  ].join("\n");
+}
+
+function formatAdminUser(from) {
+  const username = from.username ? `@${from.username}` : "без username";
+  return `${username} (ID ${from.id})`;
+}
+
+function getUserSource(user) {
+  return user.latest_source || user.first_source || "direct";
+}
+
+function formatAdminDate(date) {
+  return date.toLocaleString("ru-RU", { timeZone: "Asia/Tbilisi" });
 }
 
 function getRequestFromPayload(payload) {
